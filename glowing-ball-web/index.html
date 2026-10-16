@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070910">
+<title>GLOW BALL — Web Prototype</title>
+<style>
+  :root { color-scheme: dark; --bg:#070910; --panel:#111522; --line:#2b3245; --text:#f4f6ff; --muted:#a8b0c5; --accent:#9afcff; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:radial-gradient(ellipse at top,#171d31 0%,var(--bg) 58%); color:var(--text); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { width:min(760px,100%); margin:0 auto; padding:20px 14px calc(28px + env(safe-area-inset-bottom)); }
+  header { padding:8px 4px 16px; }
+  .eyebrow { color:var(--accent); font-size:.72rem; letter-spacing:.2em; font-weight:700; }
+  h1 { font-size:clamp(1.7rem,7vw,2.6rem); letter-spacing:.06em; margin:5px 0 4px; }
+  .intro { color:var(--muted); margin:0; line-height:1.55; font-size:.93rem; }
+  .stage { position:relative; width:100%; aspect-ratio:3/4; max-height:68vh; min-height:300px; overflow:hidden; border:1px solid var(--line); border-radius:20px; background:#020308; box-shadow:0 18px 50px #0008; }
+  video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  video { transform:scaleX(-1); opacity:.8; }
+  canvas { touch-action:manipulation; }
+  .stage-note { position:absolute; z-index:2; top:12px; left:12px; right:12px; padding:9px 11px; border-radius:10px; background:#080b14b8; backdrop-filter:blur(8px); color:#e7ebfa; font-size:.78rem; pointer-events:none; }
+  .controls { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:12px; }
+  button { min-height:46px; border:1px solid var(--line); border-radius:12px; padding:11px 12px; background:#171c2b; color:var(--text); font:inherit; font-weight:650; cursor:pointer; }
+  button.primary { color:#061014; background:var(--accent); border-color:var(--accent); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .panel { margin-top:12px; border:1px solid var(--line); border-radius:16px; padding:14px; background:#0e1220d9; }
+  .panel h2 { margin:0 0 12px; font-size:1rem; }
+  .setting { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; margin:12px 0 6px; }
+  .setting label { font-size:.9rem; }
+  output { color:var(--accent); font-variant-numeric:tabular-nums; font-size:.9rem; }
+  input[type=range] { width:100%; accent-color:var(--accent); grid-column:1 / -1; }
+  .hint { color:var(--muted); font-size:.82rem; line-height:1.55; margin:9px 0 0; }
+  .status { margin-top:10px; min-height:1.4em; font-size:.85rem; color:var(--accent); }
+  .pill { display:inline-block; border:1px solid var(--line); border-radius:99px; padding:3px 8px; font-size:.72rem; color:var(--muted); margin-right:5px; }
+  .footer { color:var(--muted); font-size:.78rem; line-height:1.55; padding:12px 4px 0; }
+  @media (min-width:650px) { .stage { aspect-ratio:16/10; max-height:none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">INTERACTIVE WEB EXPERIMENT</div>
+    <h1>GLOW BALL</h1>
+    <p class="intro">実物の光るボールをカメラで追いかけ、画面に光のコピーを生み出す試作版。</p>
+  </header>
+  <section class="stage" aria-label="カメラと光のエフェクト">
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="stage-note" id="stageNote">「カメラを起動」を押して、光るボールを映してね。</div>
+  </section>
+  <div class="controls">
+    <button class="primary" id="startBtn">カメラを起動</button>
+    <button id="stopBtn" disabled>カメラを停止</button>
+    <button id="clearBtn">軌跡をリセット</button>
+    <button id="viewBtn">背景：カメラ映像</button>
+  </div>
+  <section class="panel">
+    <h2>エフェクト調整</h2>
+    <div class="setting"><label for="threshold">光の検出しきい値</label><output id="thresholdOut">220</output><input id="threshold" type="range" min="130" max="250" value="220"></div>
+    <div class="setting"><label for="copies">複製数</label><output id="copiesOut">2</output><input id="copies" type="range" min="0" max="5" value="2"></div>
+    <div class="setting"><label for="delay">コピーの時間差</label><output id="delayOut">180 ms</output><input id="delay" type="range" min="60" max="500" step="20" value="180"></div>
+    <div class="setting"><label for="glow">光の強さ</label><output id="glowOut">22</output><input id="glow" type="range" min="5" max="40" value="22"></div>
+    <p class="hint">コツ：まず少し暗い背景でボールを映してみて。周囲の照明や反射も検出される場合は、しきい値を上げて調整してね。</p>
+    <div class="status" id="status" role="status">待機中 — カメラはまだ起動していません。</div>
+  </section>
+  <section class="panel">
+    <h2>試し方</h2>
+    <p class="hint"><span class="pill">1</span>カメラを起動して許可する</p>
+    <p class="hint"><span class="pill">2</span>光るボールを画面内でゆっくり左右に動かす</p>
+    <p class="hint"><span class="pill">3</span>ボールが検出されたら、コピー数と時間差を調整する</p>
+    <p class="hint">これは初期プロトタイプです。明るい点を検出する方式なので、複数の明るい光がある環境や速い動きでは追跡が不安定になることがあります。</p>
+  </section>
+  <p class="footer">カメラ映像はこのページ内で処理し、サーバーへ送信しません。カメラの利用にはブラウザの許可が必要です。カメラ起動にはHTTPSで公開したページ、またはlocalhostでの実行が必要です。</p>
+</main>
+<script>
+(() => {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha: true });
+  const sample = document.createElement('canvas');
+  const sctx = sample.getContext('2d', { willReadFrequently: true });
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const status = document.getElementById('status');
+  const stageNote = document.getElementById('stageNote');
+  const threshold = document.getElementById('threshold');
+  const copies = document.getElementById('copies');
+  const delay = document.getElementById('delay');
+  const glow = document.getElementById('glow');
+  const controls = [
+    [threshold, 'thresholdOut', v => v],
+    [copies, 'copiesOut', v => v],
+    [delay, 'delayOut', v => `${v} ms`],
+    [glow, 'glowOut', v => v]
+  ];
+  controls.forEach(([el, out, format]) => {
+    const update = () => document.getElementById(out).textContent = format(el.value);
+    el.addEventListener('input', update); update();
+  });
+
+  let stream = null;
+  let running = false;
+  let raf = 0;
+  let lastDetect = 0;
+  let points = [];
+  let cameraBackground = true;
+  let lastPoint = null;
+  let lostFrames = 0;
+  const SAMPLE_W = 160;
+  const SAMPLE_H = 120;
+  sample.width = SAMPLE_W;
+  sample.height = SAMPLE_H;
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function setStatus(message) { status.textContent = message; }
+
+  async function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('このページではカメラを起動できません。HTTPSのURLで開いてね。');
+      return;
+    }
+    startBtn.disabled = true;
+    setStatus('カメラへの接続中…');
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } }
+      });
+      video.srcObject = stream;
+      await video.play();
+      running = true;
+      stopBtn.disabled = false;
+      stageNote.textContent = '光るボールを画面内でゆっくり動かしてみて。';
+      setStatus('カメラ起動中 — 光るボールを探しています。');
+      raf = requestAnimationFrame(loop);
+    } catch (err) {
+      console.error(err);
+      startBtn.disabled = false;
+      const messages = {
+        NotAllowedError: 'カメラが許可されていません。ブラウザのサイト設定からカメラを許可してね。',
+        NotFoundError: '利用できるカメラが見つかりませんでした。',
+        NotReadableError: 'カメラを使えません。他のアプリが使用中でないか確認してね。'
+      };
+      setStatus(messages[err.name] || `カメラを起動できませんでした（${err.name || 'エラー'}）。`);
+    }
+  }
+
+  function stopCamera() {
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    stream = null;
+    video.srcObject = null;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setStatus('停止しました。');
+    stageNote.textContent = '「カメラを起動」を押して、光るボールを映してね。';
+  }
+
+  function detectBrightPoint(now) {
+    // Limit image analysis rate for mobile performance.
+    if (now - lastDetect < 45 || video.readyState < 2) return;
+    lastDetect = now;
+    sctx.drawImage(video, 0, 0, SAMPLE_W, SAMPLE_H);
+    const image = sctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
+    const cut = Number(threshold.value);
+    let total = 0, sumX = 0, sumY = 0, max = 0, maxX = 0, maxY = 0;
+    // Ignore a small border to reduce bright reflections at the edge.
+    for (let y = 3; y < SAMPLE_H - 3; y += 1) {
+      for (let x = 3; x < SAMPLE_W - 3; x += 1) {
+        const i = (y * SAMPLE_W + x) * 4;
+        const r = image[i], g = image[i + 1], b = image[i + 2];
+        const brightness = Math.max(r, g, b);
+        // Brightness threshold plus a slight preference for bright, near-white light.
+        const whiteish = Math.min(r, g, b) > cut * 0.48;
+        if (brightness >= cut && whiteish) {
+          total++; sumX += x; sumY += y;
+          if (brightness > max) { max = brightness; maxX = x; maxY = y; }
+        }
+      }
+    }
+    if (total >= 2) {
+      // Use the brightest cluster's weighted centre rather than every bright pixel in the frame.
+      // This intentionally simple first prototype works best with one dominant light source.
+      let weightSum = 0, wx = 0, wy = 0;
+      const radius = 15;
+      const x0 = Math.max(0, maxX - radius), x1 = Math.min(SAMPLE_W - 1, maxX + radius);
+      const y0 = Math.max(0, maxY - radius), y1 = Math.min(SAMPLE_H - 1, maxY + radius);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const i = (y * SAMPLE_W + x) * 4;
+        const r = image[i], g = image[i + 1], b = image[i + 2];
+        const bright = Math.max(r, g, b);
+        if (bright >= cut && Math.min(r,g,b) > cut * .48) {
+          const w = bright - cut + 1; weightSum += w; wx += x * w; wy += y * w;
+        }
+      }
+      if (weightSum > 0) {
+        let nx = (wx / weightSum) / SAMPLE_W;
+        const ny = (wy / weightSum) / SAMPLE_H;
+        // Camera preview is mirrored, so mirror the horizontal coordinate too.
+        nx = 1 - nx;
+        const rect = canvas.getBoundingClientRect();
+        const point = { x: nx * rect.width, y: ny * rect.height, t: now };
+        // Reject implausibly large jumps, but allow reacquisition after a short loss.
+        if (!lastPoint || lostFrames > 4 || Math.hypot(point.x-lastPoint.x, point.y-lastPoint.y) < Math.max(rect.width, rect.height) * .42) {
+          points.push(point); lastPoint = point; lostFrames = 0;
+          if (points.length > 1200) points.splice(0, points.length - 1200);
+          setStatus(`追跡中 — 明るい点を検出（${Math.round(point.x)}, ${Math.round(point.y)}）`);
+          stageNote.textContent = '追跡中！コピー数や時間差を調整してみて。';
+          return;
+        }
+      }
+    }
+    lostFrames++;
+    if (lostFrames > 8) {
+      lastPoint = null;
+      setStatus('ボールを見失っています — 背景を暗くするか、検出しきい値を調整してね。');
+      stageNote.textContent = 'ボールが見つからないときは、背景や明るさを調整してね。';
+    }
+  }
+
+  function pointAtTime(targetTime) {
+    if (!points.length) return null;
+    for (let i = points.length - 1; i >= 0; i--) {
+      if (points[i].t <= targetTime) return points[i];
+    }
+    return points[0];
+  }
+
+  function drawOrb(p, radius, alpha, strength) {
+    if (!p) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowColor = '#8afcff';
+    ctx.shadowBlur = strength;
+    const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 2.7);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(.18, 'rgba(170,255,255,.95)');
+    grad.addColorStop(.55, 'rgba(65,220,255,.3)');
+    grad.addColorStop(1, 'rgba(65,220,255,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(p.x, p.y, radius * 2.7, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = strength * .7;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(p.x, p.y, radius * .42, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function loop(now) {
+    if (!running) return;
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!cameraBackground) {
+      ctx.fillStyle = '#02030a'; ctx.fillRect(0, 0, w, h);
+    }
+    detectBrightPoint(now);
+    const current = pointAtTime(now - 35);
+    const n = Number(copies.value);
+    const d = Number(delay.value);
+    const strength = Number(glow.value);
+    for (let i = n; i >= 1; i--) {
+      const p = pointAtTime(now - d * i);
+      if (p && now - p.t < 1800) drawOrb(p, Math.max(5, 10 - i * .7), Math.max(.15, .78 - i * .12), strength * (1 - i * .08));
+    }
+    if (current && now - current.t < 700) drawOrb(current, 12, 1, strength * 1.3);
+    // Faint line trail from recent detected positions.
+    const recent = points.filter(p => now - p.t < 500);
+    if (recent.length > 1) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(110,245,255,.28)'; ctx.shadowColor = '#76faff'; ctx.shadowBlur = 8;
+      ctx.beginPath(); recent.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); ctx.restore();
+    }
+    raf = requestAnimationFrame(loop);
+  }
+
+  startBtn.addEventListener('click', startCamera);
+  stopBtn.addEventListener('click', stopCamera);
+  document.getElementById('clearBtn').addEventListener('click', () => { points = []; lastPoint = null; lostFrames = 0; ctx.clearRect(0,0,canvas.width,canvas.height); setStatus('軌跡をリセットしました。'); });
+  document.getElementById('viewBtn').addEventListener('click', () => {
+    cameraBackground = !cameraBackground;
+    video.style.opacity = cameraBackground ? '.8' : '0';
+    document.getElementById('viewBtn').textContent = cameraBackground ? '背景：カメラ映像' : '背景：黒';
+  });
+  window.addEventListener('pagehide', stopCamera);
+})();
+</script>
+</body>
+</html>
